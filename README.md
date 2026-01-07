@@ -1,9 +1,30 @@
-# nginx-redis-cache
-Nginx Cache stored in Redis management. To use only with NGINX HTTP Redis module.
+# Nginx Cache in Redis wordpress plugin.
+Nginx Cache stored in Redis Wordpress implementation. To use only with NGINX HTTP Redis module - https://github.com/osokin/ngx_http_redis
 
-/** Nginx Cache in Redis wp-config.php Settings */
 
-<--Required, update according Redis server configuration:-->
+# Nginx Cache in Redis is an admin-side tool that:
+
+- Connects directly to Redis (used by Nginx as a cache store)
+
+- Detects cached pages using a known Nginx key format
+
+- Lists cached URLs in the WordPress admin
+
+- Allows:
+
+-- Full cache flush
+
+-- Per-URL purge
+
+-- Automatic purge on post update
+
+- Provides admin UI + toolbar access
+
+- Verifies configuration and Redis connectivity
+
+# Nginx Cache in Redis wp-config.php Settings
+
+** Update settings according Redis server configuration:**
 
 define('NGINX_REDIS_HOST', '127.0.0.1'); // Redis server host
 
