@@ -311,10 +311,10 @@ function nrcf_cache_admin_page() {
     if (!current_user_can('manage_options')) return;
 
     // Handle flush request
-    if (!empty($_GET['nrcf_flush_all']) && check_admin_referer('nrcf_flush_all')) {
-        $count = nrcf_flush_nginx_cache();
-        echo '<div class="updated"><p>Deleted ' . intval($count) . ' cache keys.</p></div>';
-    }
+//    if (!empty($_GET['nrcf_flush_all']) && check_admin_referer('nrcf_flush_all')) {
+//        $count = nrcf_flush_nginx_cache();
+//        echo '<div class="updated"><p>Deleted ' . intval($count) . ' cache keys.</p></div>';
+//    }
 
     // Purge request
     if (!empty($_GET['nrcf_purge_keys']) && check_admin_referer('nrcf_purge_keys')) {
@@ -341,10 +341,26 @@ function nrcf_cache_admin_page() {
          		style="width:32px;height:32px;">
     		Nginx Redis Cached URLs
 	</h1>
-
+	<form method="post" style="margin:15px 0;">
+    		<?php wp_nonce_field('nrcf_flush_all_action'); ?>
+    		<input type="hidden" name="nrcf_flush_all" value="1">
+    		<button type="submit" class="button button-danger"
+            		onclick="return confirm('Flush ALL Nginx Redis cache? This cannot be undone.');">
+        		Flush All Cache
+    		</button>
+	</form>
         <?php if (empty($items)) : ?>
             <p>No cached URLs found.</p>
         <?php else : ?>
+		if (
+    			isset($_POST['nrcf_flush_all']) &&
+  			check_admin_referer('nrcf_flush_all_action')
+		) {
+    			$count = nrcf_flush_nginx_cache();
+    			echo '<div class="notice notice-success"><p>';
+    			echo 'Deleted ' . intval($count) . ' cache keys.';
+    			echo '</p></div>';
+		}
 
             <?php nrcf_render_pagination($current_page, $total_pages); ?>
 
@@ -484,5 +500,27 @@ add_action('admin_enqueue_scripts', function() {
         });
     });
     </script>
+    <?php
+});
+
+add_action('admin_head', function () {
+    $screen = get_current_screen();
+    if (!$screen || $screen->id !== 'toplevel_page_nginx-redis-cache') {
+        return;
+    }
+    ?>
+    <style>
+    .nrcf-button-danger {
+        background: #d63638;
+        border-color: #d63638;
+        color: #fff;
+    }
+    .nrcf-button-danger:hover,
+    .nrcf-button-danger:focus {
+        background: #b32d2e;
+        border-color: #b32d2e;
+        color: #fff;
+    }
+    </style>
     <?php
 });
