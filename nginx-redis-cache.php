@@ -233,7 +233,7 @@ add_action('admin_menu', function () {
         'manage_options',
         'nginx-redis-cache',
         'nrcf_cache_admin_page',
-        'dashicons-database',
+        plugin_dir_url(__FILE__) . 'assets/icon.svg',,
         80
     );
 
@@ -336,7 +336,11 @@ function nrcf_cache_admin_page() {
 
     ?>
     <div class="wrap">
-        <h1>Nginx Redis Cached URLs</h1>
+	<h1 style="display:flex;align-items:center;gap:10px;">
+    		<img src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/icon.png'); ?>"
+         		style="width:32px;height:32px;">
+    		Nginx Redis Cached URLs
+	</h1>
 
         <?php if (empty($items)) : ?>
             <p>No cached URLs found.</p>

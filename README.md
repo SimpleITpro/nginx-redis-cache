@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon-256.png" width="128">
+</p>
+
 # Nginx Cache in Redis wordpress plugin.
 Nginx Cache stored in Redis Wordpress implementation. To use only with NGINX HTTP Redis module - https://github.com/osokin/ngx_http_redis
 
