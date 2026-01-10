@@ -2,7 +2,7 @@
 /*
 Plugin Name: Nginx Cache in Redis
 Description: Managing Nginx cache stored in Redis
-Version: 1.0.0
+Version: 1.0.1
 Author: SimpleIT.pro
 Author URI: https://www.simpleit.pro
 Requires PHP: 8.2
