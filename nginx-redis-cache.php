@@ -2,7 +2,7 @@
 /*
 Plugin Name: Nginx Cache in Redis
 Description: Managing Nginx cache stored in Redis
-Version: 1.0.1
+Version: 1.0.2
 Author: SimpleIT.pro
 Author URI: https://www.simpleit.pro
 Requires PHP: 8.2
@@ -185,7 +185,7 @@ function nrcf_get_cached_urls(int $limit = 50): array {
 // -----------------------------
 // 4️⃣ Purge functions
 // -----------------------------
-function nrcf_flush_nginx_cache() {
+function nrcf_flush_nginx_cache(): int {
     $redis = nrcf_get_redis();
     if (!$redis) return 0;
 
@@ -193,9 +193,18 @@ function nrcf_flush_nginx_cache() {
     $it = null;
     $deleted = 0;
 
-    while ($keys = $redis->scan($it, $pattern, 1000)) {
-        if (!empty($keys)) $deleted += $redis->del($keys);
-    }
+    do {
+        $keys = $redis->scan($it, $pattern, 1000);
+
+        if ($keys === false) {
+            continue;
+        }
+
+        if (!empty($keys)) {
+            $deleted += $redis->del($keys);
+        }
+
+    } while ($it !== 0);
 
     return $deleted;
 }
@@ -233,7 +242,8 @@ add_action('admin_menu', function () {
         'manage_options',
         'nginx-redis-cache',
         'nrcf_cache_admin_page',
-        plugin_dir_url(__FILE__) . 'assets/icon.svg',,
+        //plugin_dir_url(__FILE__) . 'assets/icon-128.png',
+        'dashicons-admin-generic',
         80
     );
 
@@ -253,6 +263,7 @@ add_action('admin_menu', function () {
 add_action('admin_bar_menu', function($wp_admin_bar) {
     if (!current_user_can('manage_options')) return;
 
+        $icon = '<span class="ab-icon nrcf-toolbar-icon"></span>';
     // Top-level toolbar menu
     $wp_admin_bar->add_node([
         'id'    => 'nginx_redis_cache',
@@ -271,15 +282,17 @@ add_action('admin_bar_menu', function($wp_admin_bar) {
     ]);
 
 // Flush All Cache menu item
-$wp_admin_bar->add_node([
-    'id'     => 'nginx_redis_cache_flush',
-    'parent' => 'nginx_redis_cache',
-    'title'  => 'Flush All Cache',
-    'href'   => wp_nonce_url(admin_url('admin.php?page=nginx-redis-cache&nrcf_flush_all=1'), 'nrcf_flush_all'),
-]);
+        $wp_admin_bar->add_node([
+                'id'     => 'nginx_redis_cache_flush',
+                'parent' => 'nginx_redis_cache',
+                'title'  => 'Flush All Cache',
+                'href'   => wp_nonce_url(
+                admin_url('admin-post.php?action=nrcf_flush_all'),
+                'nrcf_flush_all_action'
+        ),
+    ]);
 
 }, 100);
-
 // Flush All Cache page
 function nrcf_flush_cache_page() {
     if (!current_user_can('manage_options')) return;
@@ -307,60 +320,99 @@ function nrcf_flush_cache_page() {
 // -----------------------------
 // 6️⃣ Cached URLs admin page with pagination
 // -----------------------------
+add_action('admin_post_nrcf_flush_all', function () {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+
+    if (
+        !isset($_REQUEST['_wpnonce']) ||
+        !wp_verify_nonce($_REQUEST['_wpnonce'], 'nrcf_flush_all_action')
+    ) {
+        wp_die('Invalid nonce');
+    }
+
+    $count = nrcf_flush_nginx_cache();
+
+    wp_safe_redirect(
+        add_query_arg(
+            'nrcf_flushed',
+            intval($count),
+            admin_url('admin.php?page=nginx-redis-cache')
+        )
+    );
+    exit;
+});
+
+add_action('admin_notices', function () {
+    if (!isset($_GET['nrcf_flushed'])) return;
+
+    echo '<div class="notice notice-success"><p>';
+    echo 'Deleted ' . intval($_GET['nrcf_flushed']) . ' cache keys.';
+    echo '</p></div>';
+});
+
+
+add_action('admin_init', function () {
+    if (
+        isset($_POST['nrcf_flush_all']) &&
+        current_user_can('manage_options') &&
+        check_admin_referer('nrcf_flush_all_action')
+    ) {
+        $count = nrcf_flush_nginx_cache();
+
+        add_action('admin_notices', function () use ($count) {
+            echo '<div class="notice notice-success"><p>';
+            echo 'Deleted ' . intval($count) . ' cache keys.';
+            echo '</p></div>';
+        });
+    }
+});
+
+
 function nrcf_cache_admin_page() {
-    if (!current_user_can('manage_options')) return;
+    if (!current_user_can('manage_options')) {
+        return;
+    }
 
-    // Handle flush request
-//    if (!empty($_GET['nrcf_flush_all']) && check_admin_referer('nrcf_flush_all')) {
-//        $count = nrcf_flush_nginx_cache();
-//        echo '<div class="updated"><p>Deleted ' . intval($count) . ' cache keys.</p></div>';
-//    }
-
-    // Purge request
+    // Purge specific keys
     if (!empty($_GET['nrcf_purge_keys']) && check_admin_referer('nrcf_purge_keys')) {
         $keys = array_map('urldecode', explode(',', $_GET['nrcf_purge_keys']));
         nrcf_purge_keys($keys);
-        add_action('admin_notices', function () {
-            echo '<div class="notice notice-success"><p>Cache purged successfully!</p></div>';
-        });
+        echo '<div class="notice notice-success"><p>Cache purged successfully!</p></div>';
     }
 
-    $per_page = 20;
+    $per_page     = 20;
     $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
 
-    $all_items = nrcf_get_cached_urls(1000);
+    $all_items   = nrcf_get_cached_urls(1000);
     $total_items = count($all_items);
     $total_pages = max(1, ceil($total_items / $per_page));
-    $offset = ($current_page - 1) * $per_page;
-    $items = array_slice($all_items, $offset, $per_page);
-
+    $offset      = ($current_page - 1) * $per_page;
+    $items       = array_slice($all_items, $offset, $per_page);
     ?>
+
     <div class="wrap">
-	<h1 style="display:flex;align-items:center;gap:10px;">
-    		<img src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/icon.png'); ?>"
-         		style="width:32px;height:32px;">
-    		Nginx Redis Cached URLs
-	</h1>
-	<form method="post" style="margin:15px 0;">
-    		<?php wp_nonce_field('nrcf_flush_all_action'); ?>
-    		<input type="hidden" name="nrcf_flush_all" value="1">
-    		<button type="submit" class="button button-danger"
-            		onclick="return confirm('Flush ALL Nginx Redis cache? This cannot be undone.');">
-        		Flush All Cache
-    		</button>
-	</form>
+        <h1 style="display:flex;align-items:center;gap:10px;">
+            <img src="<?php echo esc_url(plugin_dir_url(__FILE__) . 'assets/icon-256.png'); ?>"
+                 style="width:32px;height:32px;">
+            Nginx Redis Cached URLs
+        </h1>
+
+<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+    <?php wp_nonce_field('nrcf_flush_all_action'); ?>
+    <input type="hidden" name="action" value="nrcf_flush_all">
+
+    <button type="submit" class="button button-danger"
+            onclick="return confirm('Flush ALL Nginx Redis cache?');">
+        Flush All Cache
+    </button>
+</form>
         <?php if (empty($items)) : ?>
+
             <p>No cached URLs found.</p>
+
         <?php else : ?>
-		if (
-    			isset($_POST['nrcf_flush_all']) &&
-  			check_admin_referer('nrcf_flush_all_action')
-		) {
-    			$count = nrcf_flush_nginx_cache();
-    			echo '<div class="notice notice-success"><p>';
-    			echo 'Deleted ' . intval($count) . ' cache keys.';
-    			echo '</p></div>';
-		}
 
             <?php nrcf_render_pagination($current_page, $total_pages); ?>
 
@@ -376,7 +428,7 @@ function nrcf_cache_admin_page() {
                     <?php foreach ($items as $item) : ?>
                         <tr>
                             <td>
-                                <a href="<?php echo esc_url('http://' . $item['url']); ?>" target="_blank">
+                                <a href="<?php echo esc_url('https://' . $item['url']); ?>" target="_blank">
                                     <?php echo esc_html($item['url']); ?>
                                 </a>
                             </td>
@@ -384,7 +436,10 @@ function nrcf_cache_admin_page() {
                             <td>
                                 <?php $all_keys = implode(',', array_map('rawurlencode', $item['keys'])); ?>
                                 <a class="button button-small"
-                                   href="<?php echo wp_nonce_url(add_query_arg('nrcf_purge_keys', $all_keys), 'nrcf_purge_keys'); ?>">
+                                   href="<?php echo wp_nonce_url(
+                                       add_query_arg('nrcf_purge_keys', $all_keys),
+                                       'nrcf_purge_keys'
+                                   ); ?>">
                                     Purge
                                 </a>
                             </td>
@@ -504,11 +559,41 @@ add_action('admin_enqueue_scripts', function() {
 });
 
 add_action('admin_head', function () {
-    $screen = get_current_screen();
-    if (!$screen || $screen->id !== 'toplevel_page_nginx-redis-cache') {
-        return;
-    }
     ?>
+    <style>
+#toplevel_page_nginx-redis-cache .wp-menu-image svg {
+    display: none;
+}
+    #toplevel_page_nginx-redis-cache .wp-menu-image::before {
+        content: '';
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        background-color: currentColor;
+
+        -webkit-mask: url('<?php echo plugin_dir_url(__FILE__) . 'assets/icon.svg'; ?>') no-repeat center;
+        mask: url('<?php echo plugin_dir_url(__FILE__) . 'assets/icon.svg'; ?>') no-repeat center;
+
+        -webkit-mask-size: contain;
+        mask-size: contain;
+    }
+    </style>
+
+    <style>
+    .nrcf-toolbar-icon {
+        width: 16px;
+        height: 16px;
+        display: inline-block;
+        background-color: currentColor;
+
+        -webkit-mask: url('<?php echo plugin_dir_url(__FILE__) . 'assets/icon.svg'; ?>') no-repeat center;
+        mask: url('<?php echo plugin_dir_url(__FILE__) . 'assets/icon.svg'; ?>') no-repeat center;
+
+        -webkit-mask-size: contain;
+        mask-size: contain;
+    }
+    </style>
+
     <style>
     .nrcf-button-danger {
         background: #d63638;
